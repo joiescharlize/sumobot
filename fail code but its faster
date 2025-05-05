@@ -1,0 +1,121 @@
+#include <xmotion.h>
+
+int Start = 14.8;
+
+int QTI[] = {A4, A2, A1};
+int QTIvalue[] = {0, 0, 0}; //0 = black, 1 = white
+
+#define lineThreshhold 150
+
+int IR[] = {A5, 4, 2, 1, 0};
+int IRvalue[] = {0, 0, 0, 0,1}; 
+int LastValue = 0;
+
+long currentTime;
+long TOL = 0; 
+long TSL; 
+#define timeBetweenLineRecognition 250
+bool timePassed = true; 
+
+String space = " ";
+
+void setup() {
+   Serial.begin(9600);
+   pinMode(A4,INPUT);pinMode(A2,INPUT);pinMode(A1,INPUT); 
+   pinMode(A5, INPUT);pinMode(4, INPUT);pinMode(2, INPUT);pinMode(1, INPUT);pinMode(0, INPUT); 
+}
+
+void loop() {
+  while (digitalRead(Start) == 0) {
+    xmotion.UserLed2(80); 
+  }
+  xmotion.CounterLeds(990, 5); 
+  while (true){
+    currentTime = millis();
+    QTICheck();
+    IRCheck();
+    Serial.println(QTIvalue[0] + space + QTIvalue[1] + space + QTIvalue[2]);
+    if (EdgeDetected()) {
+      continue; // Skip further actions this loop if edge detected
+    }
+    Movement(QTIvalue[0], QTIvalue[1], QTIvalue[2]);
+    if (QTIvalue[0] == 0 && QTIvalue[1] == 0 && QTIvalue[2] == 0) {
+      OpponentTracking(IRvalue[0], IRvalue[1], IRvalue[2], IRvalue[3], IRvalue[4]);
+    }
+  }
+}
+
+void QTICheck(){
+  for (int i = 0; i < 3; i++){
+    QTIvalue[i] = (analogRead(QTI[i]) <= lineThreshhold) ? 1 : 0;
+  }
+}
+
+bool EdgeDetected(){
+  if ((QTIvalue[0] == 1) || (QTIvalue[1] == 1) || (QTIvalue[2] == 1)) { 
+    TOL = millis();
+    // Reverse and turn away from edge
+    xmotion.Backward(70, 100);  // Longer reverse
+    xmotion.Right0(70, 300);    // Turn right to reorient
+    timePassed = false;
+    return true;
+  }
+  return false;
+}
+
+void Movement(int left, int mid, int right){
+  if (!timePassed) {
+    if (currentTime - TOL >= timeBetweenLineRecognition) {
+      timePassed = true;
+    }
+    return;
+  }
+
+  if ((left && mid && right) || (left && !mid && right)) {
+    xmotion.Backward(100, 100);
+    xmotion.Right0(100, 320); // 180-degree turn
+  } else if (left && !mid && !right) {
+    xmotion.Right0(90, 200);
+  } else if (!left && !mid && right) {
+    xmotion.Left0(90, 200);
+  } else if ((left && mid) || (!left && mid && right)) {
+    xmotion.Backward(90, 100);
+    xmotion.Right0(90, 200);
+  } else if (!left && mid && !right) {
+    xmotion.Backward(90, 100);
+    xmotion.Right0(90, 160);
+  }
+  xmotion.StopMotors(1);
+  timePassed = false;
+}
+
+void IRCheck(){
+  for (int i = 0; i < 5; i++){
+    IRvalue[i] = digitalRead(IR[i]);
+  }
+}
+
+void OpponentTracking(int L, int LD, int M, int RD, int R) {
+  if (M) {
+    xmotion.Forward(100, 1);  // Increased from 70 → 90 (faster forward)
+    LastValue = 0;
+  } else if (R) {
+    xmotion.Right0(80, 1);   // Increased from 60 → 80 (sharper right turn)
+    LastValue = 1;
+  } else if (L) {
+    xmotion.Left0(80, 1);    // Increased from 60 → 80 (sharper left turn)
+    LastValue = 2;
+  } else if (LD) {
+    xmotion.ArcTurn(40, 80, 1);  // Smoother but faster left arc
+    LastValue = 2;
+  } else if (RD) {
+    xmotion.ArcTurn(80, 40, 1);  // Smoother but faster right arc
+    LastValue = 1;
+  } else if (LastValue == 0) {
+    xmotion.Forward(40, 1);  // Increased from 25 → 40 (faster search)
+  } else if (LastValue == 1) {
+    xmotion.Right0(50, 1);  // Increased from 30 → 50 (faster right search)
+  } else if (LastValue == 2) {
+    xmotion.Left0(50, 1);   // Increased from 30 → 50 (faster left search)
+  }
+}
